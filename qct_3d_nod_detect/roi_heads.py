@@ -35,7 +35,6 @@ def add_ground_truth_to_proposals_3d(
 
         # Create new Instances3D for GT boxes
         gt_proposals = Instances3D(proposals_per_image.image_size)
-
         gt_proposals.proposal_boxes = gt_boxes
 
         # Objectness logits: high confidence for GT
@@ -58,6 +57,7 @@ def subsample_labels(
     positive_fraction: float,
     num_classes: int,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    
     """
     Args:
         labels (Tensor): shape (N,), values in:
@@ -108,7 +108,6 @@ class ROIHeads3D(nn.Module):
             roi_pooler,
             box_head,
             box_predictor,
-            is_training,
     ):
         
         super().__init__()
@@ -121,7 +120,6 @@ class ROIHeads3D(nn.Module):
         self.roi_pooler = roi_pooler
         self.box_head = box_head
         self.box_predictor = box_predictor
-        self.training = is_training
 
     def _sample_proposals(
             self,
@@ -188,12 +186,12 @@ class ROIHeads3D(nn.Module):
                 targets_per_image.gt_classes if has_gt else torch.empty(0),
             )
 
-            proposals_per_image = proposals_per_image[sampled_idxs]
-            proposal_per_image.gt_classes = gt_classes
+            proposals_per_image = proposal_per_image[sampled_idxs]
+            proposals_per_image.gt_classes = gt_classes
 
             if has_gt:
                 sampled_targets = matched_idxs[sampled_idxs]
-                proposal_per_image.gt_boxes = targets_per_image.gt_boxes[sampled_targets]
+                proposals_per_image.gt_boxes = targets_per_image.gt_boxes[sampled_targets]
 
             proposals_with_gt.append(proposals_per_image)
 
@@ -209,9 +207,14 @@ class ROIHeads3D(nn.Module):
         if self.training:
             assert targets is not None
             proposals = self.label_and_sample_proposals(proposals, targets)
+        
+        proposal_boxes = [p.proposal_boxes for p in proposals]
+        feature_tensors = [v for k, v in features.items()]
 
-        box_features = self.roi_pooler(features, proposals)
+        box_features = self.roi_pooler(feature_tensors, proposal_boxes)
+        print(f"Box features pool - {box_features.shape}")
         box_features = self.box_head(box_features)
+        print(f"Box features shape - {box_features.shape}")
 
         predictions = self.box_predictor(box_features)
 
