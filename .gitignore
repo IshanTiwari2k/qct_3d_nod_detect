@@ -1,6 +1,9 @@
 _docs/
 _proc/
 toy_dataset/
+nbs/
+
+*.ini
 
 *.bak
 .gitattributes
@@ -23,10 +26,13 @@ __pycache__/
 # C extensions
 *.so
 
+_modidx.py
+
 # Distribution / packaging
 .Python
 env/
 build/
+_proc/
 conda/
 develop-eggs/
 dist/

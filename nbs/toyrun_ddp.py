@@ -1,10 +1,9 @@
 from clearml import Task
 from pytorch_lightning.loggers import TensorBoardLogger
 import torch
-from qct_3d_nod_detect.rpn import RPN3D, StandardRPNHead3d
-from qct_3d_nod_detect.faster_rcnn import FasterRCNNOutputLayers3D
-from qct_3d_nod_detect.poolers import ROIPooler3D
-from qct_3d_nod_detect.anchor_generator_3d import DefaultAnchorGenerator3D
+from qct_3d_nod_detect.rpn import RPN3D, StandardRPNHead3d, DefaultAnchorGenerator3D
+from qct_3d_nod_detect.roi import FasterRCNNOutputLayers3D
+from qct_3d_nod_detect.layers import ROIPooler3D
 from qct_3d_nod_detect.box_regression import Box3DTransform
 from qct_3d_nod_detect.matcher import Matcher
 from qct_3d_nod_detect.roi_heads import ROIHeads3D
