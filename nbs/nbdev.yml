@@ -1,9 +1,0 @@
-project:
-  output-dir: _docs
-
-website:
-  title: "qct_3d_nod_detect"
-  site-url: "https://IshanTiwari2k.github.io/qct_3d_nod_detect"
-  description: "Nodule Detection training and eval platform."
-  repo-branch: main
-  repo-url: "https://github.com/IshanTiwari2k/qct_3d_nod_detect"
