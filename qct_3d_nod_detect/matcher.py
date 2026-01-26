@@ -86,6 +86,8 @@ class Matcher:
             low_high = (matched_vals >= low) & (matched_vals < high) # Stratify labels
             match_labels[low_high] = l
 
+        # print(f"Labels after matching - ", torch.unique(match_labels, return_counts=True))
+
         if self.allow_low_quality_matches:
             self.set_low_quality_matches_(match_labels, match_quality_matrix)
 

@@ -8,6 +8,7 @@ from torch import nn
 import torch
 from .structures import Instances3D, pairwise_iou_3d
 from typing import List, Tuple, Optional, Dict
+import math
 
 def add_ground_truth_to_proposals_3d(
     targets: List[Instances3D],
@@ -38,9 +39,9 @@ def add_ground_truth_to_proposals_3d(
         gt_proposals.proposal_boxes = gt_boxes
 
         # Objectness logits: high confidence for GT
-        gt_proposals.objectness_logits = torch.ones(
-            len(gt_boxes), device=device
-        )
+        gt_logit_value = math.log((1.0 - 1e-10) / (1 - (1.0 - 1e-10)))
+        gt_logits = gt_logit_value * torch.ones(len(gt_boxes), device=device)
+        gt_proposals.objectness_logits = gt_logits
 
         # Concatenate proposals
         proposals_per_image = Instances3D.cat(
@@ -202,9 +203,10 @@ class ROIHeads3D(nn.Module):
             features: Dict[str, torch.Tensor],
             proposals: List[Instances3D],
             targets: Optional[List[Instances3D]] = None,
+            training: bool = True,
     ):
         
-        if self.training:
+        if training:
             assert targets is not None
             proposals = self.label_and_sample_proposals(proposals, targets)
         
@@ -212,13 +214,13 @@ class ROIHeads3D(nn.Module):
         feature_tensors = [v for k, v in features.items()]
 
         box_features = self.roi_pooler(feature_tensors, proposal_boxes)
-        print(f"Box features pool - {box_features.shape}")
+        # print(f"Box features pool - {box_features.shape}")
         box_features = self.box_head(box_features)
-        print(f"Box features shape - {box_features.shape}")
+        # print(f"Box features shape - {box_features.shape}")
 
         predictions = self.box_predictor(box_features)
 
-        if self.training:
+        if training:
             return self.box_predictor.losses(predictions, proposals)
         else:
             return self.box_predictor.inference(predictions, proposals)

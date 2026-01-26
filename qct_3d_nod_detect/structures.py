@@ -47,10 +47,10 @@ class Boxes3D:
 
     def volume(self):
         """
-        Computes the area of all the boxes
+        Computes the vol of all the boxes
 
         Returns:
-            torch.Tensor: a vector with the area of each box
+            torch.Tensor: a vector with the vol of each box
         """
 
         box = self.tensor
@@ -177,6 +177,7 @@ class Boxes3D:
         """
         Concatenates a list of Boxes3D into a single Boxes3D
         """
+
         assert isinstance(boxes_list, (list, tuple))
         if len(boxes_list) == 0:
             return cls(torch.empty(0))
@@ -343,6 +344,7 @@ class Instances3D:
 def pairwise_intersection(boxes1: Boxes3D, boxes2: Boxes3D) -> torch.Tensor:
 
     boxes1, boxes2 = boxes1.tensor, boxes2.tensor
+    
     depth_height_width = (
         torch.min(boxes1[:, None, 3:], boxes2[:, 3:]) - 
         torch.max(boxes1[:, None, :3], boxes2[:, :3])

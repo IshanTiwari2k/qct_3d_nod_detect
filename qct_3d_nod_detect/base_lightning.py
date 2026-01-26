@@ -32,6 +32,8 @@ class BaseLightningModule(pl.LightningModule):
     def clip_gradients(
         self,
         optimizer: Optional[torch.optim.Optimizer] = None,
+        gradient_clip_val: Optional[float] = None,
+        gradient_clip_algorithm: Optional[str] = None,
     ) -> None:
 
         """
@@ -45,21 +47,27 @@ class BaseLightningModule(pl.LightningModule):
             Works safely even with mixed precision / gradient accumulation.
         """
 
-        if self.grad_clip_val is None or self.grad_clip_val <= 0:
+        clip_val = self.grad_clip_val
+        clip_algo = self.grad_clip_algorithm
+
+        if clip_val is None or clip_val <= 0:
             return
 
         if optimizer is None:
             parameters = self.parameters()
-
         else:
-            parameters = [p for group in optimizer.param_groups for p in group["params"]]
+            parameters = [p for group in optimizer.param_groups for p in group["params"]
+                          if p.grad is not None]
+            
+        if not parameters:
+            return
 
-        if self.grad_clip_algorithm == "value":
-            torch.nn.utils.clip_grad_value_(parameters, self.grad_clip_val)
+        if clip_algo == "value":
+            torch.nn.utils.clip_grad_value_(parameters, clip_val)
         else:
             grad_norm = torch.nn.utils.clip_grad_norm_(
                 parameters,
-                max_norm=self.grad_clip_val,
+                max_norm=clip_val,
                 norm_type=2.0, # L2
             )
 

@@ -360,12 +360,9 @@ def build_vit_backbone_with_fpn(
     out_channels: int = 256,
 ) -> nn.Module:
 
-    if not isinstance(ckpt_path, Path):
-        ckpt_path = Path(ckpt_path)
-
     if variant == "S":
         model_config = {
-            "img_size": (96, 128, 128),
+            "img_size": (128, 128, 128),
             "patch_size": (16, 16, 16),
             "in_channels": 1,
             "embed_dim": 384,
@@ -400,8 +397,16 @@ def build_vit_backbone_with_fpn(
 
     # Load backbone
     backbone = ViT3D(**model_config)
-    missing, unexpected = load_state_dict_into_vit(backbone, ckpt_path)
-    print(f"Missing keys: {missing}, Unexpected keys: {unexpected}")
+    if ckpt_path is not None:
+        if not isinstance(ckpt_path, Path):
+            ckpt_path = Path(ckpt_path)
+            print(f"Loading from pretrained checkpoint - {ckpt_path}")
+
+        missing, unexpected = load_state_dict_into_vit(backbone, ckpt_path)
+        print(f"Missing keys: {missing}, Unexpected keys: {unexpected}")
+    
+    else:
+        print("loading random weights")
 
     # Build with FPN
     fpn = SimpleFPN(dim=model_config["embed_dim"], out_channels=out_channels, scales=scales)

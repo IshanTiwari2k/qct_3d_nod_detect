@@ -94,7 +94,7 @@ class StandardRPNHead3d(nn.Module):
 
 
 
-# %% ../nbs/06_rpn.ipynb 1
+# %% ../nbs/06_rpn.ipynb 4
 def build_rpn_head_3d(input_shapes: List[ShapeSpec], cfg=None):
     """
     Very simple 3D RPN head builder – no registry, just creates StandardRPNHead3D.
@@ -132,7 +132,6 @@ class RPN3D(nn.Module):
         loss_weight: Union[float, Dict[str, float]] = 1.0,
         box_reg_loss_type: str = "smooth_l1",
         smooth_l1_beta: float = 0.0,
-        is_training: bool = True
     ):
 
         super().__init__()
@@ -149,7 +148,6 @@ class RPN3D(nn.Module):
         self.nms_thresh = nms_thresh
         self.min_box_size = float(min_box_size)
         self.anchor_boundary_thresh = anchor_boundary_thresh
-        self.training = is_training
 
         if isinstance(loss_weight, float):
             loss_weight = {"loss_rpn_cls": loss_weight, "loss_rpn_loc": loss_weight}
@@ -159,7 +157,12 @@ class RPN3D(nn.Module):
         self.smooth_l1_beta = smooth_l1_beta
 
     @classmethod
-    def from_config(cls, cfg, input_shape: Dict[str, ShapeSpec]):
+    def from_config(
+        cls, 
+        cfg, 
+        input_shape: Dict[str, ShapeSpec]
+    ):
+        
         in_features = cfg.MODEL.RPN.IN_FEATURES
         ret = {
             "in_features": in_features,
@@ -186,7 +189,10 @@ class RPN3D(nn.Module):
         ret["head"] = build_rpn_head_3d([input_shape[f] for f in in_features])  # Should return StandardRPNHead3D
         return ret
 
-    def _subsample_labels(self, label):
+    def _subsample_labels(
+            self, 
+            label
+        ):
 
         pos_idx, neg_idx = subsample_labels(
             label, self.batch_size_per_image, self.positive_fraction, 0
@@ -200,14 +206,31 @@ class RPN3D(nn.Module):
 
     @torch.no_grad
     def label_and_sample_anchors(
-        self, anchors: List[Boxes3D], gt_instances: List[Instances3D]
+        self, 
+        anchors: List[Boxes3D], 
+        gt_instances: List[Instances3D]
     ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+        
+        """
+            Args:
+                anchors (list[Boxes]): anchors for each feature map.
+                gt_instances: the ground-truth instances for each image.
 
+            Returns:
+                list[Tensor]:
+                    List of #img tensors. i-th element is a vector of labels whose length is
+                    the total number of anchors across all feature maps R = sum(Hi * Wi * A).
+                    Label values are in {-1, 0, 1}, with meanings: -1 = ignore; 0 = negative
+                    class; 1 = positive class.
+                list[Tensor]:
+                    i-th element is a Rx4 tensor. The values are the matched gt boxes for each
+                    anchor. Values are undefined for those anchors not labeled as 1.
+        """
 
         anchors = Boxes3D.cat(anchors) 
         gt_boxes = [x.gt_boxes for x in gt_instances]
-       
         image_sizes = [x.image_size for x in gt_instances]
+        
         del gt_instances
 
         gt_labels = []
@@ -309,6 +332,7 @@ class RPN3D(nn.Module):
         images,
         features: Dict[str, torch.Tensor],
         gt_instances: Optional[List[Instances3D]] = None,
+        training: bool = True
     ):
 
         features = [features[f] for f in self.in_features]
@@ -338,7 +362,8 @@ class RPN3D(nn.Module):
             for x in pred_anchor_deltas
         ]
 
-        if self.training:
+        if training:
+
             assert gt_instances is not None, "RPN3D requires gt_instances in training!"
 
             gt_labels, gt_boxes = self.label_and_sample_anchors(
@@ -361,6 +386,7 @@ class RPN3D(nn.Module):
             pred_objectness_logits,
             pred_anchor_deltas,
             images.image_sizes,
+            training
         )
 
         return proposals, losses
@@ -370,7 +396,8 @@ class RPN3D(nn.Module):
         anchors: List[Boxes3D],
         pred_objectness_logits: List[torch.Tensor],
         pred_anchor_deltas: List[torch.Tensor],
-        image_sizes: List[Tuple[int, int]]
+        image_sizes: List[Tuple[int, int]],
+        training: bool = True,
     ):
 
         """
@@ -391,10 +418,10 @@ class RPN3D(nn.Module):
                 pred_objectness_logits,
                 image_sizes,
                 self.nms_thresh,
-                self.pre_nms_topk[self.training],
-                self.post_nms_topk[self.training],
+                self.pre_nms_topk[training],
+                self.post_nms_topk[training],
                 self.min_box_size,
-                self.training
+                training
             )
 
     def _decode_proposals_3d(self, anchors: List[Boxes3D], pred_anchor_deltas: List[torch.Tensor]):
