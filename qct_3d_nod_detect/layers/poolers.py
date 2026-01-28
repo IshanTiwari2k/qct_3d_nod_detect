@@ -10,7 +10,7 @@ import torch
 from torch import Tensor
 from torch import nn
 import torch.nn.functional as F
-from . import nonzero_tuple, cat, shapes_to_tensor
+from .layers import nonzero_tuple, cat, shapes_to_tensor
 from ..structures import Boxes3D, Instances3D
 
 # %% ../../nbs/layers/01_poolers.ipynb 1

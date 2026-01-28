@@ -7,11 +7,10 @@ __all__ = ['fast_rcnn_inference_3d', 'fast_rcnn_inference_single_image_3d', 'Fas
 from typing import List, Union, Tuple, Dict
 import torch
 import torch.nn as nn
-from ..box_regression import _dense_box_regression_loss_3d
+from ..roi import _dense_box_regression_loss_3d
 from ..structures import Boxes3D, Instances3D
 from ..layers import nonzero_tuple
 import torch.nn.functional as F
-from ..proposal_utils import batched_nms_3d
 
 def fast_rcnn_inference_3d(
     boxes: List[torch.Tensor],
@@ -50,6 +49,9 @@ def fast_rcnn_inference_single_image_3d(
     scores: (R, K+1)
     volume_shape: (D, H, W)
     """
+
+    # Local import to avoid circular dependency when roi is imported from rpn
+    from ..rpn import batched_nms_3d
 
     # Remove invalid rows
     valid_mask = torch.isfinite(boxes).all(dim=1) & torch.isfinite(scores).all(dim=1)

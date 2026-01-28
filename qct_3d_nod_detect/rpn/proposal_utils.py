@@ -6,8 +6,7 @@ __all__ = ['nms_3d', 'batched_nms_3d', 'find_top_rpn_proposals_3d']
 # %% ../../nbs/rpn/10_proposal_utis.ipynb 0
 import torch
 from typing import List, Tuple
-from ..structures import Boxes3D, Instances3D
-from ..box_regression import pairwise_iou_3d
+from ..structures import Boxes3D, Instances3D, pairwise_iou_3d
 
 def nms_3d(
     boxes: torch.Tensor,
@@ -124,6 +123,7 @@ def find_top_rpn_proposals_3d(
     results = []
 
     for n, image_size in enumerate(image_sizes):
+        
         boxes = Boxes3D(topk_proposals[n]) # (K, 6)
         scores_per_img = topk_scores[n]
         lvl = level_ids
@@ -166,4 +166,3 @@ def find_top_rpn_proposals_3d(
         results.append(res)
 
     return results
-

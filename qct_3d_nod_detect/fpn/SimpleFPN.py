@@ -61,13 +61,14 @@ class BackboneFPN(nn.Module):
         self.patch_grid_size = patch_grid_size
 
         block = fpn.blocks["p2"]
+
         for layer in reversed(block):
             if isinstance(layer, nn.Conv3d):
                 self.out_channels = layer.out_channels
                 break
-            else:
-                raise ValueError("Could not determine out_channels from FPN block.")
             
+        if self.out_channels is None:
+            raise ValueError("Could not determine out_channels from FPN block.")
 
         self.out_channels = fpn.blocks["p2"][-1].num_channels \
             if isinstance(fpn.blocks["p2"][-1], nn.GroupNorm) \

@@ -1,1 +1,2 @@
 from .base_lightning import BaseLightningModule
+from .lightning_module import FasterRCNN3DLightning

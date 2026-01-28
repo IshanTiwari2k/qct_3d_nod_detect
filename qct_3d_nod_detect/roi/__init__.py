@@ -6,6 +6,7 @@ from .box_regression import (
     giou_loss_3d,
     diou_loss_3d,
     ciou_loss_3d,
+    _dense_box_regression_loss_3d
 )
 
 from .faster_rcnn import (

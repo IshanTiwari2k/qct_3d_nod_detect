@@ -410,6 +410,7 @@ def build_vit_backbone_with_fpn(
 
     # Build with FPN
     fpn = SimpleFPN(dim=model_config["embed_dim"], out_channels=out_channels, scales=scales)
+    
     backbone_fpn = BackboneFPN(
         backbone=backbone,
         fpn=fpn,

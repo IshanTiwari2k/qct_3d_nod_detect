@@ -26,7 +26,7 @@ __pycache__/
 # C extensions
 *.so
 
-_modidx.py
+qct_3d_nod_detect/_modidx.py
 
 # Distribution / packaging
 .Python

@@ -7,15 +7,15 @@ __all__ = ['StandardRPNHead3d', 'build_rpn_head_3d', 'RPN3D']
 from torch import nn
 from typing import List, Union, Tuple, Dict, Optional
 import torch
-from ..anchor_generator_3d import build_anchor_generator_3d
+from .anchor_generator_3d import build_anchor_generator_3d
 from ..structures import Boxes3D, Instances3D, pairwise_iou_3d
-from ..box_regression import Box3DTransform, _dense_box_regression_loss_3d
-from ..matcher import Matcher
+from ..roi.box_regression import Box3DTransform, _dense_box_regression_loss_3d
+from .matcher import Matcher
 from ..layers import ShapeSpec, cat
-from ..sampling import subsample_labels
+from .sampling import subsample_labels
 import torch.nn.functional as F
-from ..memory import retry_if_cuda_oom
-from ..proposal_utils import find_top_rpn_proposals_3d
+from ..utils.memory import retry_if_cuda_oom
+from .proposal_utils import find_top_rpn_proposals_3d
 
 class StandardRPNHead3d(nn.Module):
 
@@ -330,7 +330,6 @@ class RPN3D(nn.Module):
         anchors = [Boxes3D(anchor) for anchor in anchors]
 
         # return anchors
-
         pred_objectness_logits, pred_anchor_deltas = self.rpn_head(features)
 
         # Objectness logits, 
@@ -370,6 +369,16 @@ class RPN3D(nn.Module):
 
         else:
             losses = {}
+
+        print("objectness min/max/mean:",
+            [x.min().item() for x in pred_objectness_logits],
+            [x.max().item() for x in pred_objectness_logits],
+            [x.mean().item() for x in pred_objectness_logits])
+        
+        print("deltas   min/max/mean:",
+            [x.min().item() for x in pred_anchor_deltas],
+            [x.max().item() for x in pred_anchor_deltas],
+            [x.mean().item() for x in pred_anchor_deltas])
 
         proposals = self.predict_proposals(
             anchors,
