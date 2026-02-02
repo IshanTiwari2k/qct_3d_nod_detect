@@ -370,15 +370,15 @@ class RPN3D(nn.Module):
         else:
             losses = {}
 
-        print("objectness min/max/mean:",
-            [x.min().item() for x in pred_objectness_logits],
-            [x.max().item() for x in pred_objectness_logits],
-            [x.mean().item() for x in pred_objectness_logits])
+        # print("objectness min/max/mean:",
+        #     [x.min().item() for x in pred_objectness_logits],
+        #     [x.max().item() for x in pred_objectness_logits],
+        #     [x.mean().item() for x in pred_objectness_logits])
         
-        print("deltas   min/max/mean:",
-            [x.min().item() for x in pred_anchor_deltas],
-            [x.max().item() for x in pred_anchor_deltas],
-            [x.mean().item() for x in pred_anchor_deltas])
+        # print("deltas   min/max/mean:",
+        #     [x.min().item() for x in pred_anchor_deltas],
+        #     [x.max().item() for x in pred_anchor_deltas],
+        #     [x.mean().item() for x in pred_anchor_deltas])
 
         proposals = self.predict_proposals(
             anchors,

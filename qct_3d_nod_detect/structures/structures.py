@@ -120,7 +120,11 @@ class Boxes3D:
             return Boxes3D(self.tensor[item].view(1, -1))
         
         b = self.tensor[item]
+        
+        if b.dim() == 1:
+            b = b.unsqueeze(0)
         assert b.dim() == 2, "Indexing on Boxes3D with {} failed to return a matrix!".format(item)
+
         return Boxes3D(b)
 
     def __len__(self):

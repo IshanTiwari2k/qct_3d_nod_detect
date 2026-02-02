@@ -145,7 +145,26 @@ def find_top_rpn_proposals_3d(
 
         boxes.clip(image_size)
 
-        keep = boxes.nonempty(threshold=min_box_size)
+        ### ERROR HANDLING FOR EMPTY BOXES ###
+        # Sometimes no proposals survive (no valid boxes or too small), keep threshold=0.0 or completely remove (in case all proposals are invalid, negative scales.).
+
+        keep = boxes.nonempty(threshold=min_box_size) # Keeping it 0 for now.
+
+        if keep.dim() == 0:
+            keep = keep.unsqueeze(0)
+
+        keep_idx = torch.nonzero(keep).squeeze(1)
+
+        if keep_idx.numel() == 0:
+
+            res = Instances3D(image_size)
+            res.proposal_boxes = Boxes3D(
+                torch.empty((0, 6))
+            )
+            res.objectness_logits = torch.empty((0,))
+            results.append(res)
+            continue
+
         if keep.sum().item() != len(boxes):
             boxes = boxes[keep]
             scores_per_img = scores_per_img[keep]

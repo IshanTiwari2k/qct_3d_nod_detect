@@ -9,6 +9,7 @@ from torch import nn
 from ..metrics import BoxMetrics3D
 from ..structures import Instances3D, Boxes3D
 import torch
+from typing import List
 
 class FasterRCNN3DLightning(BaseLightningModule):
     def __init__(
@@ -17,7 +18,8 @@ class FasterRCNN3DLightning(BaseLightningModule):
             learning_rate: float = 1e-4,
             grad_clip_val: float = 0.0,
             grad_clip_algorithm: str = "norm",
-            log_on: str = "step"
+            log_on: str = "step",
+            modules_to_freeze: List[str] = [],
     ):
         
         super().__init__(learning_rate=learning_rate)
@@ -34,6 +36,7 @@ class FasterRCNN3DLightning(BaseLightningModule):
         self.train_predictions, self.val_predictions = [], []
 
         self.train_metrics_batches = 10
+        self.freeze_by_name(modules_to_freeze) # TODO make it configurable
 
     def _build_targets(
             self,
@@ -174,17 +177,37 @@ class FasterRCNN3DLightning(BaseLightningModule):
 
         self.val_predictions.clear()
 
+    def freeze_by_name(
+        self,
+        freeze_patterns: list[str],
+        verbose: bool = True,
+    ):
+        """
+            Freeze parameters whose names contain any of `freeze_patterns`.
+            Everything else remains trainable.
+        """
+
+        frozen = []
+
+        for name, param in self.model.named_parameters():
+            if any(pat in name for pat in freeze_patterns):
+                param.requires_grad = False
+                frozen.append(name)
+
+        if verbose:
+            print("=== Freezing summary ===")
+            print(f"Frozen params: {len(frozen)}")
+
+            for n in frozen[:20]:
+                print(" ", n)
+            if len(frozen) > 20:
+                print(f"  ... +{len(frozen) - 20} more")
+
+        return frozen
+
     def configure_optimizers(self):
-
-        for p in self.model.backbone.parameters():
-            p.requires_grad = False
-        
-        params = filter(lambda p: p.requires_grad, self.model.parameters())
-
-        optimizer = torch.optim.AdamW(
-            params,
+        return torch.optim.AdamW(
+            self.model.parameters(),
             lr=self.learning_rate,
-            weight_decay=1e-4
+            weight_decay=1e-4,
         )
-
-        return optimizer
