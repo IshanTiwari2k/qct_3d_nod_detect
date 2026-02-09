@@ -35,8 +35,8 @@ def build_model_from_cfg(
         offset=cfg.anchor_generator.offset,
     )
 
-    box3d_transform = Box3DTransform(
-        weights=(1, 1, 1, 1, 1, 1),
+    box3d_transform_rpn = Box3DTransform(
+        weights=(1.0, 1.0, 1.0, 1.0, 1.0, 1.0),
         scale_clamp=math.log(1000.0),
     )
 
@@ -57,7 +57,7 @@ def build_model_from_cfg(
         head=rpn_head,
         anchor_generator=anchor_generator,
         anchor_matcher=rpn_matcher,
-        box3d_transform=box3d_transform,
+        box3d_transform=box3d_transform_rpn,
         batch_size_per_image=cfg.rpn.batch_size_per_image,
         positive_fraction=cfg.rpn.positive_fraction,
         pre_nms_topk=tuple(cfg.rpn.pre_nms_topk),
@@ -93,10 +93,15 @@ def build_model_from_cfg(
         fc_dims=cfg.box_head.fc_dims,
     )
 
+    box3d_transform_roi = Box3DTransform(
+        weights=(10.0, 10.0, 10.0, 5.0, 5.0, 5.0),
+        scale_clamp=math.log(1000.0),
+    )
+
     box_predictor = FasterRCNNOutputLayers3D(
         input_dim=cfg.box_head.fc_dims[-1],
         num_classes=cfg.roi.num_classes,
-        box2box_transform=box3d_transform,
+        box2box_transform=box3d_transform_rpn,
         cls_agnostic_bbox_reg=False,
     )
 

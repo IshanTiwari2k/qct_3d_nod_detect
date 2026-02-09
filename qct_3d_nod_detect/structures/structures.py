@@ -92,9 +92,10 @@ class Boxes3D:
         """
 
         box = self.tensor
-        widths = box[:, 2] - box[:, 0]
-        heights = box[:, 3] - box[:, 1]
-        keep = (widths > threshold) & (heights > threshold)
+        depths = box[:, 3] - box[:, 0]
+        heights = box[:, 4] - box[:, 1]
+        widths = box[:, 5] - box[:, 2]
+        keep = (widths > threshold) & (heights > threshold) & (depths > threshold)
         return keep
     
     def __getitem__(self, item) -> "Boxes3D":

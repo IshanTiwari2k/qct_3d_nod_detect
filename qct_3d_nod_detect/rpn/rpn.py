@@ -218,8 +218,8 @@ class RPN3D(nn.Module):
         """
 
         anchors = Boxes3D.cat(anchors) 
-        gt_boxes = [x.gt_boxes for x in gt_instances]
-        image_sizes = [x.image_size for x in gt_instances]
+        gt_boxes = [x.gt_boxes for x in gt_instances] # List of length B (B = Batch size)
+        image_sizes = [x.image_size for x in gt_instances] # List of length B (B = Batch size)
         
         del gt_instances
 
@@ -282,7 +282,7 @@ class RPN3D(nn.Module):
         """
 
         num_images = len(gt_labels)
-        gt_labels = torch.stack(gt_labels)
+        gt_labels = torch.stack(gt_labels) # Stack gt labels into shape (B, sum(Di*Hi*Wi))
 
         # Log the number of positive/negative anchors per-image that's used in training
         pos_mask = gt_labels == 1
@@ -308,9 +308,10 @@ class RPN3D(nn.Module):
         )
 
         normalizer = self.batch_size_per_image * num_images
+        loc_normalizer = max(pos_mask.sum().item(), 1)
         losses = {
             "loss_rpn_cls": objectness_loss / normalizer,
-            "loss_rpn_loc": localization_loss / normalizer,
+            "loss_rpn_loc": localization_loss / loc_normalizer,
         }
 
         losses = {k: v * self.loss_weight.get(k, 1.0) for k, v in losses.items()}
@@ -351,6 +352,9 @@ class RPN3D(nn.Module):
             for x in pred_anchor_deltas
         ]
 
+        print("mean |delta|:", pred_anchor_deltas[0].abs().mean().item())
+        print("max |delta|:", pred_anchor_deltas[0].abs().max().item())
+
         if training:
 
             assert gt_instances is not None, "RPN3D requires gt_instances in training!"
@@ -358,6 +362,17 @@ class RPN3D(nn.Module):
             gt_labels, gt_boxes = self.label_and_sample_anchors(
                 anchors, gt_instances
             )
+            
+            for i, labels in enumerate(gt_labels):
+                
+                num_pos = (labels == 1).sum().item()
+                num_neg = (labels == 0).sum().item()
+                num_ign = (labels == -1).sum().item()
+
+                print(
+                    f"[RPN] Image {i}: "
+                    f"pos={num_pos}, neg={num_neg}, ign={num_ign}"
+                )
 
             losses = self.losses(
                 anchors,
@@ -370,23 +385,37 @@ class RPN3D(nn.Module):
         else:
             losses = {}
 
-        # print("objectness min/max/mean:",
-        #     [x.min().item() for x in pred_objectness_logits],
-        #     [x.max().item() for x in pred_objectness_logits],
-        #     [x.mean().item() for x in pred_objectness_logits])
-        
-        # print("deltas   min/max/mean:",
-        #     [x.min().item() for x in pred_anchor_deltas],
-        #     [x.max().item() for x in pred_anchor_deltas],
-        #     [x.mean().item() for x in pred_anchor_deltas])
-
         proposals = self.predict_proposals(
             anchors,
             pred_objectness_logits,
             pred_anchor_deltas,
             images.image_sizes,
             training
-        )
+        ) # Get the total proposals for each image by applying deltas to the given bboxes and post nms
+
+        inst = proposals[0]
+        predicted_boxes = inst.proposal_boxes.tensor
+
+        if training:
+
+            ious = pairwise_iou_3d(
+                Boxes3D(predicted_boxes),
+                gt_instances[0].gt_boxes
+            )
+
+            print(f"Best iou ", ious.max().item())
+
+            scores = inst.objectness_logits
+
+            print(
+                "[RPN proposals]",
+                "num: ", len(predicted_boxes),
+                "score min/max",
+                scores.min().item(),
+                scores.max().item()
+            )
+
+            print(f"Top ten boxes:", predicted_boxes[:5])
 
         return proposals, losses
 

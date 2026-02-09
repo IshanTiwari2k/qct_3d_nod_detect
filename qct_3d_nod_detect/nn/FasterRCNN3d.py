@@ -50,7 +50,7 @@ class GeneralizedRCNN3D(nn.Module):
         image_list = ImagesList3D(
                 tensor=images,
                 image_sizes=[images.shape[-3:]] * images.shape[0],
-                )
+            )
             
         proposals, rpn_losses = self.rpn(
             images=image_list,

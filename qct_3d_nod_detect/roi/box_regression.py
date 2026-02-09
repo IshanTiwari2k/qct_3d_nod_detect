@@ -331,6 +331,7 @@ def _dense_box_regression_loss_3d(
     """
 
     # Concatenate anchors across feature levels
+    # R = sum(Di*Hi*Wi)
     if isinstance(anchors[0], Boxes3D):
         anchors = type(anchors[0]).cat(anchors).tensor  # (R, 6)
     else:
