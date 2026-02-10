@@ -5,17 +5,17 @@ __all__ = ['StandardRPNHead3d', 'build_rpn_head_3d', 'RPN3D']
 
 # %% ../../nbs/rpn/06_rpn.ipynb 0
 from torch import nn
-from typing import List, Union, Tuple, Dict, Optional
+from typing import List, Dict, Optional, Tuple, Union
 import torch
-from .anchor_generator_3d import build_anchor_generator_3d
-from ..structures import Boxes3D, Instances3D, pairwise_iou_3d
-from ..roi.box_regression import Box3DTransform, _dense_box_regression_loss_3d
-from .matcher import Matcher
-from ..layers import ShapeSpec, cat
-from .sampling import subsample_labels
-import torch.nn.functional as F
-from ..utils.memory import retry_if_cuda_oom
 from .proposal_utils import find_top_rpn_proposals_3d
+from .sampling import subsample_labels
+from .matcher import Matcher
+
+from ..structures import Boxes3D, Instances3D, pairwise_iou_3d
+from ..roi import Box3DTransform, _dense_box_regression_loss_3d
+from ..layers import ShapeSpec, cat
+import torch.nn.functional as F
+from ..utils import retry_if_cuda_oom
 
 class StandardRPNHead3d(nn.Module):
 
@@ -94,7 +94,7 @@ class StandardRPNHead3d(nn.Module):
 
 
 
-# %% ../../nbs/rpn/06_rpn.ipynb 4
+# %% ../../nbs/rpn/06_rpn.ipynb 1
 def build_rpn_head_3d(input_shapes: List[ShapeSpec], cfg=None):
     """
     Very simple 3D RPN head builder – no registry, just creates StandardRPNHead3D.
@@ -213,13 +213,13 @@ class RPN3D(nn.Module):
                     Label values are in {-1, 0, 1}, with meanings: -1 = ignore; 0 = negative
                     class; 1 = positive class.
                 list[Tensor]:
-                    i-th element is a Rx4 tensor. The values are the matched gt boxes for each
+                    i-th element is a Rx6 tensor. The values are the matched gt boxes for each
                     anchor. Values are undefined for those anchors not labeled as 1.
         """
 
         anchors = Boxes3D.cat(anchors) 
-        gt_boxes = [x.gt_boxes for x in gt_instances] # List of length B (B = Batch size)
-        image_sizes = [x.image_size for x in gt_instances] # List of length B (B = Batch size)
+        gt_boxes = [x.gt_boxes for x in gt_instances]
+        image_sizes = [x.image_size for x in gt_instances]
         
         del gt_instances
 
@@ -282,12 +282,10 @@ class RPN3D(nn.Module):
         """
 
         num_images = len(gt_labels)
-        gt_labels = torch.stack(gt_labels) # Stack gt labels into shape (B, sum(Di*Hi*Wi))
+        gt_labels = torch.stack(gt_labels)
 
         # Log the number of positive/negative anchors per-image that's used in training
         pos_mask = gt_labels == 1
-        num_pos_anchors = pos_mask.sum().item()
-        num_neg_anchors = (gt_labels == 0).sum().item()
 
         localization_loss = _dense_box_regression_loss_3d(
             anchors,
@@ -309,6 +307,7 @@ class RPN3D(nn.Module):
 
         normalizer = self.batch_size_per_image * num_images
         loc_normalizer = max(pos_mask.sum().item(), 1)
+
         losses = {
             "loss_rpn_cls": objectness_loss / normalizer,
             "loss_rpn_loc": localization_loss / loc_normalizer,
@@ -325,12 +324,13 @@ class RPN3D(nn.Module):
         gt_instances: Optional[List[Instances3D]] = None,
         training: bool = True
     ):
-
+        
         features = [features[f] for f in self.in_features]
         anchors = self.anchor_generator(features)
         anchors = [Boxes3D(anchor) for anchor in anchors]
 
         # return anchors
+
         pred_objectness_logits, pred_anchor_deltas = self.rpn_head(features)
 
         # Objectness logits, 
@@ -352,9 +352,6 @@ class RPN3D(nn.Module):
             for x in pred_anchor_deltas
         ]
 
-        print("mean |delta|:", pred_anchor_deltas[0].abs().mean().item())
-        print("max |delta|:", pred_anchor_deltas[0].abs().max().item())
-
         if training:
 
             assert gt_instances is not None, "RPN3D requires gt_instances in training!"
@@ -362,17 +359,14 @@ class RPN3D(nn.Module):
             gt_labels, gt_boxes = self.label_and_sample_anchors(
                 anchors, gt_instances
             )
-            
-            for i, labels in enumerate(gt_labels):
-                
-                num_pos = (labels == 1).sum().item()
-                num_neg = (labels == 0).sum().item()
-                num_ign = (labels == -1).sum().item()
 
-                print(
-                    f"[RPN] Image {i}: "
-                    f"pos={num_pos}, neg={num_neg}, ign={num_ign}"
-                )
+            gt_labels_stacked = torch.stack(gt_labels, axis=0) # (N, R)
+            pos_per_image = (
+                (gt_labels_stacked == 1).sum()
+                .float()
+                .div(gt_labels_stacked.shape[0])
+                .detach()
+            )
 
             losses = self.losses(
                 anchors,
@@ -382,8 +376,15 @@ class RPN3D(nn.Module):
                 gt_boxes
             )
 
+            rpn_stats = {
+                "rpn/pos_per_image": pos_per_image,
+                "rpn/num_pos": pos_per_image,
+                "rpn/num_neg": (gt_labels_stacked == 0).sum().detach()/gt_labels_stacked.shape[0],
+            }
+
         else:
             losses = {}
+            rpn_stats = {}
 
         proposals = self.predict_proposals(
             anchors,
@@ -391,33 +392,9 @@ class RPN3D(nn.Module):
             pred_anchor_deltas,
             images.image_sizes,
             training
-        ) # Get the total proposals for each image by applying deltas to the given bboxes and post nms
+        )
 
-        inst = proposals[0]
-        predicted_boxes = inst.proposal_boxes.tensor
-
-        if training:
-
-            ious = pairwise_iou_3d(
-                Boxes3D(predicted_boxes),
-                gt_instances[0].gt_boxes
-            )
-
-            print(f"Best iou ", ious.max().item())
-
-            scores = inst.objectness_logits
-
-            print(
-                "[RPN proposals]",
-                "num: ", len(predicted_boxes),
-                "score min/max",
-                scores.min().item(),
-                scores.max().item()
-            )
-
-            print(f"Top ten boxes:", predicted_boxes[:5])
-
-        return proposals, losses
+        return proposals, losses, rpn_stats
 
     def predict_proposals(
         self,

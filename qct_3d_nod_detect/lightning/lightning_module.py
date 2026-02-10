@@ -30,7 +30,7 @@ class FasterRCNN3DLightning(BaseLightningModule):
         self.log_on = log_on
 
         self.box_metrics = BoxMetrics3D(
-            iou_thresholds=[0.1, 0.2, 0.3, 0.4, 0.5, 0.75]
+            iou_thresholds=[0.1, 0.2, 0.3, 0.4, 0.5]
         )
 
         self.train_predictions, self.val_predictions = [], []
@@ -68,10 +68,22 @@ class FasterRCNN3DLightning(BaseLightningModule):
         images, targets = batch
         targets = self._build_targets(images, targets)
 
-        loss_dict = self.model.forward_train(images, targets)
+        out = self.model.forward_train(images, targets)
+        loss_dict, stat_dict = out['losses'], out['stats']
         total_loss = sum(loss_dict.values())
 
-        self.log_dict_helper(loss_dict, prefix="train/")
+        self.log_dict(
+            {f"train/losses/{k}": v for k, v in loss_dict.items()},
+            prog_bar=False,
+            sync_dist=True
+        )
+
+        self.log_dict(
+            stat_dict,
+            prog_bar=True,
+            sync_dist=True,
+        )
+
         self.log(
             "train/loss_total",
             total_loss,
@@ -110,14 +122,14 @@ class FasterRCNN3DLightning(BaseLightningModule):
 
         metrics = self.box_metrics(self.train_predictions)
 
-        self.log("train/mAP", metrics["mAP"], sync_dist=True)
-        self.log("train/mAR", metrics["mAR"], sync_dist=True)
+        self.log("train/metrics/mAP", metrics["mAP"], sync_dist=True)
+        self.log("train/metrics/mAR", metrics["mAR"], sync_dist=True)
 
         for iou, ap in metrics["AP"].items():
-            self.log(f"train/AP@{iou}", ap, sync_dist=True)
+            self.log(f"train/metrics/AP@{iou}", ap, sync_dist=True)
 
         for iou, ar in metrics["AR"].items():
-            self.log(f"train/AR@{iou}", ar, sync_dist=True)
+            self.log(f"train/metrics/AR@{iou}", ar, sync_dist=True)
 
         self.train_predictions.clear()
 
@@ -134,7 +146,7 @@ class FasterRCNN3DLightning(BaseLightningModule):
 
         num_boxes = sum(len(det["scores"]) for det in detections)
         self.log(
-            "val/num_boxes",
+            "val/stat/num_boxes",
             num_boxes,
             prog_bar=True,
             sync_dist=True,
@@ -166,14 +178,14 @@ class FasterRCNN3DLightning(BaseLightningModule):
 
         metrics = self.box_metrics(self.val_predictions)
 
-        self.log("val/mAP", metrics["mAP"], prog_bar=True, sync_dist=True)
-        self.log("val/mAR", metrics["mAR"], prog_bar=True, sync_dist=True)
+        self.log("val/metrics/mAP", metrics["mAP"], prog_bar=True, sync_dist=True)
+        self.log("val/metrics/mAR", metrics["mAR"], prog_bar=True, sync_dist=True)
 
         for iou, ap in metrics["AP"].items():
-            self.log(f"val/AP@{iou}", ap, sync_dist=True)
+            self.log(f"val/metrics/AP@{iou}", ap, sync_dist=True)
 
         for iou, ar in metrics["AR"].items():
-            self.log(f"val/AR@{iou}", ar, sync_dist=True)
+            self.log(f"val/metrics/AR@{iou}", ar, sync_dist=True)
 
         self.val_predictions.clear()
 

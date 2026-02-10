@@ -14,6 +14,7 @@ def add_ground_truth_to_proposals_3d(
     targets: List[Instances3D],
     proposals: List[Instances3D],
 ) -> List[Instances3D]:
+    
     """
     Augment proposals with ground-truth boxes.
     """
@@ -107,7 +108,7 @@ class ROIHeads3D(nn.Module):
             proposal_matcher,
             proposal_append_gt: bool,
             roi_pooler,
-            box_head,
+            box_head, 
             box_predictor,
     ):
         
@@ -185,10 +186,10 @@ class ROIHeads3D(nn.Module):
                 matched_idxs,
                 matched_labels,
                 targets_per_image.gt_classes if has_gt else torch.empty(0),
-            )
+            ) # sample proposals and get corresponding gt classes for sampled proposals
 
             proposals_per_image = proposal_per_image[sampled_idxs]
-            proposals_per_image.gt_classes = gt_classes
+            proposals_per_image.gt_classes = gt_classes # Keep only the sampled gts
 
             if has_gt:
                 sampled_targets = matched_idxs[sampled_idxs]
@@ -214,9 +215,7 @@ class ROIHeads3D(nn.Module):
         feature_tensors = [v for k, v in features.items()]
 
         box_features = self.roi_pooler(feature_tensors, proposal_boxes)
-        # print(f"Box features pool - {box_features.shape}")
         box_features = self.box_head(box_features)
-        # print(f"Box features shape - {box_features.shape}")
 
         predictions = self.box_predictor(box_features)
 

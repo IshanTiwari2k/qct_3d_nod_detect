@@ -1,6 +1,7 @@
 from .anchor_generator_3d import (
     BufferList,
     DefaultAnchorGenerator3D,
+    CustomAnchorGenerator3D,
     build_anchor_generator_3d,
 )
 

@@ -74,7 +74,7 @@ def find_top_rpn_proposals_3d(
     post_nms_topk: int,
     min_box_size: float,
     training: bool
-):
+) -> List[Instances3D]:
 
     num_images = len(image_sizes)
     device = (

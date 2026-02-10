@@ -6,12 +6,14 @@ from .FasterRCNN3d import (
 )
 
 import math
+import numpy as np
 from hydra.utils import instantiate
 
 from qct_3d_nod_detect.rpn import (
     RPN3D,
     StandardRPNHead3d,
     DefaultAnchorGenerator3D,
+    CustomAnchorGenerator3D,
     Matcher,
 )
 from qct_3d_nod_detect.roi import (
@@ -28,11 +30,35 @@ def build_model_from_cfg(
     
     backbone = instantiate(cfg.backbone)
     
-    anchor_generator = DefaultAnchorGenerator3D(
-        sizes=cfg.anchor_generator.sizes,
-        aspect_ratios_3d=cfg.anchor_generator.aspect_ratios_3d,
-        strides=cfg.anchor_generator.strides,
-        offset=cfg.anchor_generator.offset,
+    # anchor_generator = DefaultAnchorGenerator3D(
+    #     sizes=cfg.anchor_generator.sizes,
+    #     aspect_ratios_3d=cfg.anchor_generator.aspect_ratios_3d,
+    #     strides=cfg.anchor_generator.strides,
+    #     offset=cfg.anchor_generator.offset,
+    # )
+
+    anchor_generator = CustomAnchorGenerator3D(
+        anchors_per_level=[
+            np.array([
+                [4.0100045, 3.967999 , 3.3645203],
+                [7.4457607, 7.346186 , 3.1999228],
+                [6.601717 , 6.593171 , 6.538016 ]
+            ], dtype=np.float32),
+
+            np.array([
+                [10.795635, 10.813686,  8.851219],
+                [16.789259, 16.77123 , 13.67743 ],
+                [23.971249, 23.577578, 20.300497]
+            ], dtype=np.float32),
+
+            np.array([
+                [34.955364, 35.467335, 28.273726],
+                [52.282185, 54.020306, 40.49856 ],
+                [75.85162 , 78.32886 , 71.89687 ]
+            ], dtype=np.float32)
+        ],
+
+        strides=[4, 8, 16]
     )
 
     box3d_transform_rpn = Box3DTransform(

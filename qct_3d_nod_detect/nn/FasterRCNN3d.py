@@ -52,7 +52,7 @@ class GeneralizedRCNN3D(nn.Module):
                 image_sizes=[images.shape[-3:]] * images.shape[0],
             )
             
-        proposals, rpn_losses = self.rpn(
+        proposals, rpn_losses, rpn_stats = self.rpn(
             images=image_list,
             features=features,
             gt_instances=targets,
@@ -67,8 +67,13 @@ class GeneralizedRCNN3D(nn.Module):
         )
 
         return {
-            **rpn_losses,
-            **roi_losses,
+            "losses" : {
+                **rpn_losses,
+                **roi_losses,
+            },
+            "stats": {
+                **rpn_stats
+            }
         }
     
     @torch.no_grad()
@@ -84,7 +89,7 @@ class GeneralizedRCNN3D(nn.Module):
                 image_sizes=[images.shape[-3:]] * images.shape[0],
         )
 
-        proposals, _ = self.rpn(
+        proposals, _, _ = self.rpn(
             images=image_list,
             features=features,
             gt_instances=None,
