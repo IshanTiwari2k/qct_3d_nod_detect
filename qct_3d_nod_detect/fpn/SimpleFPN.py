@@ -6,7 +6,59 @@ __all__ = ['SimpleFPN', 'BackboneFPN']
 # %% ../../nbs/fpn/13_SimpleFPN.ipynb 1
 from torch import nn
 import torch
-from typing import Tuple
+from typing import Tuple, Dict
+
+class AtlasAdapter(nn.Module):
+    """
+    Adapts Atlas patch tokens to a dense 32³ feature map
+    using ConvTranspose3d (learned upsampling).
+
+    Input:
+        patch_tokens: (B, 8192, 384)  where 8192 = 32*16*16
+    Output:
+        feat_map: (B, C, 32, 32, 32)
+    """
+
+    def __init__(
+        self,
+        in_dim: int = 384,
+        out_dim: int = 256,
+        patch_grid_size: Tuple[int, int, int] = (32, 16, 16),
+    ):
+        super().__init__()
+        self.patch_grid_size = patch_grid_size
+
+        # project token dim → channel dim
+        self.proj = nn.Conv3d(in_dim, out_dim, kernel_size=1)
+        self.norm = nn.GroupNorm(1, out_dim)
+
+        # upsample H,W: 16 → 32 (D already 32)
+        self.upsample_hw = nn.ConvTranspose3d(
+            out_dim,
+            out_dim,
+            kernel_size=(1, 2, 2),
+            stride=(1, 2, 2),
+        )
+
+    def forward(self, patch_tokens: torch.Tensor) -> torch.Tensor:
+        B, N, C = patch_tokens.shape
+        Dp, Hp, Wp = self.patch_grid_size
+        assert N == Dp * Hp * Wp, f"Expected {Dp*Hp*Wp}, got {N}"
+
+        x = (
+            patch_tokens
+            .view(B, Dp, Hp, Wp, C)
+            .permute(0, 4, 1, 2, 3)
+            .contiguous()
+        )  # (B, C, 32, 16, 16)
+
+        x = self.proj(x)
+        x = self.norm(x)
+
+        # learned upsampling → (B, C, 32, 32, 32)
+        x = self.upsample_hw(x)
+
+        return x
 
 class SimpleFPN(nn.Module):
     def __init__(self, dim, out_channels, scales):
@@ -94,3 +146,27 @@ class BackboneFPN(nn.Module):
 
         return features
 
+class BackboneAtlasFPN(nn.Module):
+    """
+    Atlas backbone + ConvTranspose adapter + SimpleFPN
+    """
+
+    def __init__(
+        self,
+        backbone: nn.Module,
+        fpn: SimpleFPN,
+        adapter: AtlasAdapter,
+    ):
+        super().__init__()
+        self.backbone = backbone
+        self.adapter = adapter
+        self.fpn = fpn
+        self.out_channels = next(iter(fpn.blocks.values()))[-1].num_channels
+
+    def forward(self, x: torch.Tensor) -> Dict[str, torch.Tensor]:
+        patch_tokens = self.backbone(x)
+
+        dense_feat = self.adapter(patch_tokens)  # (B, C, 32, 32, 32)
+        pyramid = self.fpn(dense_feat)
+
+        return pyramid

@@ -45,7 +45,8 @@ class GeneralizedRCNN3D(nn.Module):
             inference: List[Instances3D]
         """
 
-        features: Dict[str, torch.Tensor] = self.backbone(images)
+        images_dict = {"chest_ct": images}
+        features: Dict[str, torch.Tensor] = self.backbone(images_dict)
 
         image_list = ImagesList3D(
                 tensor=images,
@@ -81,8 +82,8 @@ class GeneralizedRCNN3D(nn.Module):
         self,
         images: torch.Tensor,
     ) -> List[Instances3D]:
-        
-        features = self.backbone(images)
+        images_dict = {"chest_ct": images}
+        features = self.backbone(images_dict)
 
         image_list = ImagesList3D(
                 tensor=images,

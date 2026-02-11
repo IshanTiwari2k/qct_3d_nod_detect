@@ -1,1 +1,1 @@
-from .SimpleFPN import SimpleFPN, BackboneFPN
+from .SimpleFPN import SimpleFPN, BackboneFPN, AtlasAdapter, BackboneAtlasFPN

@@ -9,4 +9,5 @@ from .backbones import (
     ViT3D,
     load_state_dict_into_vit,
     build_vit_backbone_with_fpn,
+    build_atlas_backbone_with_fpn
 )
