@@ -25,7 +25,7 @@ class Boxes3D:
             tensor = tensor.to(torch.float32)
 
         if tensor.numel() == 0:
-            tensor = tensor.reshape((-1, 4)).to(dtype=torch.float32)
+            tensor = tensor.reshape((-1, 6)).to(dtype=torch.float32)
 
         assert tensor.dim() == 2 and tensor.size(-1) == 6, tensor.size()
 
@@ -92,10 +92,9 @@ class Boxes3D:
         """
 
         box = self.tensor
-        depths = box[:, 3] - box[:, 0]
-        heights = box[:, 4] - box[:, 1]
-        widths = box[:, 5] - box[:, 2]
-        keep = (widths > threshold) & (heights > threshold) & (depths > threshold)
+        widths = box[:, 2] - box[:, 0]
+        heights = box[:, 3] - box[:, 1]
+        keep = (widths > threshold) & (heights > threshold)
         return keep
     
     def __getitem__(self, item) -> "Boxes3D":
@@ -121,11 +120,7 @@ class Boxes3D:
             return Boxes3D(self.tensor[item].view(1, -1))
         
         b = self.tensor[item]
-        
-        if b.dim() == 1:
-            b = b.unsqueeze(0)
         assert b.dim() == 2, "Indexing on Boxes3D with {} failed to return a matrix!".format(item)
-
         return Boxes3D(b)
 
     def __len__(self):
