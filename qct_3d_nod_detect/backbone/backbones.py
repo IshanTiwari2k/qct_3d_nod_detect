@@ -713,9 +713,7 @@ class MultiModalAtlas(nn.Module):
             patch_size=patch_size,
         )
 
-        # print(f"Mulitscale layout: {multiscale_layout}")
         grid_sizes = [layout["grid_size"] for layout in multiscale_layout]
-        # print(f"Grid sizes: {grid_sizes}")
 
         multiscale_feats = []
 

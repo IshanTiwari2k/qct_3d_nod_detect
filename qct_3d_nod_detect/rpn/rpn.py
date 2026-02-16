@@ -7,6 +7,7 @@ __all__ = ['StandardRPNHead3d', 'build_rpn_head_3d', 'RPN3D']
 from torch import nn
 from typing import List, Dict, Optional, Tuple, Union
 import torch
+from .anchor_generator_3d import CustomAnchorGenerator3D
 from .proposal_utils import find_top_rpn_proposals_3d
 from .sampling import subsample_labels
 from .matcher import Matcher
@@ -16,6 +17,8 @@ from ..roi import Box3DTransform, _dense_box_regression_loss_3d
 from ..layers import ShapeSpec, cat
 import torch.nn.functional as F
 from ..utils import retry_if_cuda_oom
+from torchvision.ops import sigmoid_focal_loss
+
 
 class StandardRPNHead3d(nn.Module):
 
@@ -92,9 +95,10 @@ class StandardRPNHead3d(nn.Module):
 
         return pred_objectness_logits, pred_anchor_deltas
 
-
-
 # %% ../../nbs/rpn/06_rpn.ipynb 1
+from .. import metrics
+
+
 def build_rpn_head_3d(input_shapes: List[ShapeSpec], cfg=None):
     """
     Very simple 3D RPN head builder – no registry, just creates StandardRPNHead3D.
@@ -132,6 +136,7 @@ class RPN3D(nn.Module):
         loss_weight: Union[float, Dict[str, float]] = 1.0,
         box_reg_loss_type: str = "smooth_l1",
         smooth_l1_beta: float = 0.0,
+        use_focal_loss: bool = False
     ):
 
         super().__init__()
@@ -148,6 +153,7 @@ class RPN3D(nn.Module):
         self.nms_thresh = nms_thresh
         self.min_box_size = float(min_box_size)
         self.anchor_boundary_thresh = anchor_boundary_thresh
+        self.use_focal_loss = use_focal_loss
 
         if isinstance(loss_weight, float):
             loss_weight = {"loss_rpn_cls": loss_weight, "loss_rpn_loc": loss_weight}
@@ -195,6 +201,24 @@ class RPN3D(nn.Module):
         label.scatter_(0, neg_idx, 0)
 
         return label
+    
+    def get_unmatched_gts(self, matched_idxs, match_labels, num_gts):
+        
+        """
+        matched_idxs: (A,)  anchor -> GT mapping
+        match_labels: (A,)  1 = positive, 0 = negative
+        num_gts: int
+        """
+
+        positive_mask = match_labels == 1
+
+        if positive_mask.sum() == 0:
+            return num_gts  # all GTs unmatched
+
+        matched_positive_gts = torch.unique(matched_idxs[positive_mask])
+        num_unmatched = num_gts - len(matched_positive_gts)
+
+        return int(num_unmatched)
 
     @torch.no_grad
     def label_and_sample_anchors(
@@ -225,6 +249,7 @@ class RPN3D(nn.Module):
 
         gt_labels = []
         matched_gt_boxes = []
+        gts_unmatched = 0
 
         for image_size_i, gt_boxes_i in zip(image_sizes, gt_boxes):
 
@@ -248,7 +273,7 @@ class RPN3D(nn.Module):
             gt_labels.append(gt_labels_i)
             matched_gt_boxes.append(matched_gt_boxes_i)
 
-        return gt_labels, matched_gt_boxes
+        return gt_labels, matched_gt_boxes, gts_unmatched
 
     @torch.jit.unused
     def losses(
@@ -299,15 +324,24 @@ class RPN3D(nn.Module):
 
         valid_mask = gt_labels >= 0
 
-        objectness_loss = F.binary_cross_entropy_with_logits(
-            cat(pred_objectness_logits, dim=1)[valid_mask],
-            gt_labels[valid_mask].to(torch.float32),
-            reduction="sum"
-        )
+        if not self.use_focal_loss:
+            objectness_loss = F.binary_cross_entropy_with_logits(
+                cat(pred_objectness_logits, dim=1)[valid_mask],
+                gt_labels[valid_mask].to(torch.float32),
+                reduction="sum"
+            )
+        else:
+            objectness_loss = sigmoid_focal_loss(
+                cat(pred_objectness_logits, dim=1)[valid_mask],
+                gt_labels[valid_mask].to(torch.float32),
+                alpha=0.7,
+                gamma=2.0,
+                reduction="sum"
+            )
 
         normalizer = self.batch_size_per_image * num_images
         loc_normalizer = max(pos_mask.sum().item(), 1)
-
+        
         losses = {
             "loss_rpn_cls": objectness_loss / normalizer,
             "loss_rpn_loc": localization_loss / loc_normalizer,
@@ -356,7 +390,7 @@ class RPN3D(nn.Module):
 
             assert gt_instances is not None, "RPN3D requires gt_instances in training!"
 
-            gt_labels, gt_boxes = self.label_and_sample_anchors(
+            gt_labels, gt_boxes, gts_unmatched = self.label_and_sample_anchors(
                 anchors, gt_instances
             )
 
@@ -376,11 +410,19 @@ class RPN3D(nn.Module):
                 gt_boxes
             )
 
+            objectness_metrics = self.compute_objectness_metrics(
+                                    pred_objectness_logits, 
+                                    gt_labels
+                                )
+
             rpn_stats = {
                 "rpn/pos_per_image": pos_per_image,
                 "rpn/num_pos": pos_per_image,
-                "rpn/num_neg": (gt_labels_stacked == 0).sum().detach()/gt_labels_stacked.shape[0],
+                "rpn/num_neg": (gt_labels_stacked == 0).sum().detach() / gt_labels_stacked.shape[0],
+                "rpn/unmatched_gts": gts_unmatched
             }
+
+            rpn_stats.update(objectness_metrics)
 
         else:
             losses = {}
@@ -429,6 +471,62 @@ class RPN3D(nn.Module):
                 training
             )
 
+    @torch.no_grad()
+    def compute_objectness_metrics(self,
+                                   pred_objectness_logits: List[torch.Tensor],
+                                   gt_labels: List[torch.Tensor]) -> Dict[str, torch.Tensor]: 
+        
+        gt_labels = torch.stack(gt_labels)
+        logits = cat(pred_objectness_logits, dim=1)
+
+        valid_mask = gt_labels >= 0
+        logits = logits[valid_mask]
+        labels = gt_labels[valid_mask]
+
+        if logits.numel() == 0:
+            metrics = {
+                "rpn/metrics/accuracy": torch.tensor(0.0),
+                "rpn/metrics/precision": torch.tensor(0.0),
+                "rpn/metrics/recall": torch.tensor(0.0),
+            }
+
+            # Add threshold metrics as zeros
+            for t in torch.arange(0.10, 0.55, 0.05):
+                metrics[f"rpn/metrics/precision@{t:.2f}"] = torch.tensor(0.0, device=device)
+                metrics[f"rpn/metrics/recall@{t:.2f}"] = torch.tensor(0.0, device=device)
+
+            return metrics
+
+        probs = torch.sigmoid(logits)
+        threshold_metrics = {}
+
+        for t in torch.arange(0.10, 0.55, 0.05, device=logits.device):
+
+            preds_t = (probs > t).float()
+
+            tp_t = ((preds_t == 1) & (labels == 1)).sum().float()
+            fp_t = ((preds_t == 1) & (labels == 0)).sum().float()
+            fn_t = ((preds_t == 0) & (labels == 1)).sum().float()
+
+            precision_t = tp_t / (tp_t + fp_t + 1e-8) if (tp_t + fp_t) > 0 else torch.tensor(-1, device=logits.device)
+            recall_t = tp_t / (tp_t + fn_t + 1e-8)
+
+            threshold_metrics[f"rpn/metrics/precision@{t.item():.2f}"] = precision_t
+            threshold_metrics[f"rpn/metrics/recall@{t.item():.2f}"] = recall_t
+
+        try:
+            from torchmetrics.classification import BinaryAUROC
+            auc = BinaryAUROC()(probs.detach(), labels)
+
+        except:
+            print("Error computing AUC, returning 0.0")
+            auc = torch.tensor(0.0, device=torch.device("cuda"))
+
+        return {
+            "rpn/AUC/auc": auc,
+            **threshold_metrics
+        }
+    
     def _decode_proposals_3d(self, anchors: List[Boxes3D], pred_anchor_deltas: List[torch.Tensor]):
         """
         Transform anchors into proposals by applying the predicted anchor deltas.

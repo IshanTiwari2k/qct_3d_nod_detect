@@ -1,0 +1,5 @@
+nohup: ignoring input
+  File "/home/users/ishan.tiwari/Ishan_Nodseg/qct_3d_nod_detect/train_ddp.py", line 19
+    auto_connect_frameworks={
+                            ^
+SyntaxError: invalid syntax. Perhaps you forgot a comma?

@@ -20,6 +20,8 @@ def main(cfg: DictConfig):
             "pytorch": False,
             "tensorboard": True,
         }
+        continue_last_task=True,
+        task_id="16c5ea512fa94b74adc147e069653b04"
     )
     task.connect(OmegaConf.to_container(cfg, resolve=True))
 
@@ -30,14 +32,15 @@ def main(cfg: DictConfig):
     lit_model = FasterRCNN3DLightning(
         model=model,
         learning_rate=cfg.optim.lr,
-        modules_to_freeze=["backbone.backbone"] # TODO make it configurable
+        # modules_to_freeze=["backbone.backbone"] # TODO make it configurable
     )
 
     trainer = instantiate(cfg.trainer)
     
     trainer.fit(
         lit_model, 
-        datamodule=datamodule
+        datamodule=datamodule,
+        ckpt_path="/home/users/ishan.tiwari/Ishan_Nodseg/checkpoints/ViTDet_atlas_10_02_27/best-map-mAPval/metrics/mAP=0.0027.ckpt"
     )
 
 if __name__ == "__main__":

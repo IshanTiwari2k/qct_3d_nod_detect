@@ -15,6 +15,7 @@ from qct_3d_nod_detect.rpn import (
     DefaultAnchorGenerator3D,
     CustomAnchorGenerator3D,
     Matcher,
+    ATSSMatcher3D
 )
 from qct_3d_nod_detect.roi import (
     ROIHeads3D,
@@ -22,10 +23,12 @@ from qct_3d_nod_detect.roi import (
     Box3DTransform,
     FastRCNNConvFCHead3D,
 )
+
 from qct_3d_nod_detect.layers import ROIPooler3D, ShapeSpec
 
 def build_model_from_cfg(
-        cfg
+        cfg,
+        use_roi_head: bool = True,
 ):
     
     backbone = instantiate(cfg.backbone)
@@ -78,6 +81,12 @@ def build_model_from_cfg(
         allow_low_quality_matches=cfg.rpn.matcher.allow_low_quality_matches,
     )
 
+    # rpn_matcher = ATSSMatcher3D(
+    #     topk=20, 
+    #     allow_low_quality_matches=False,
+    #     center_in_gt=False
+    # )
+
     rpn = RPN3D(
         in_features=cfg.rpn.in_features,
         head=rpn_head,
@@ -92,7 +101,10 @@ def build_model_from_cfg(
         min_box_size=cfg.rpn.min_box_size,
         box_reg_loss_type=cfg.rpn.box_reg_loss_type,
         smooth_l1_beta=cfg.rpn.smooth_l1_beta,
+        use_focal_loss=cfg.rpn.use_focal_loss,
     )
+
+    print(f"Using {cfg.rpn.box_reg_loss_type} for box regression")
 
     roi_pooler = ROIPooler3D(
         output_size=tuple(cfg.roi.pooler.output_size),
@@ -131,16 +143,22 @@ def build_model_from_cfg(
         cls_agnostic_bbox_reg=False,
     )
 
-    roi_heads = ROIHeads3D(
-        num_classes=cfg.roi.num_classes,
-        batch_size_per_image=cfg.roi.batch_size_per_image,
-        positive_fraction=cfg.roi.positive_fraction,
-        proposal_matcher=roi_matcher,
-        roi_pooler=roi_pooler,
-        proposal_append_gt=True,
-        box_head=box_head,
-        box_predictor=box_predictor,
-    )
+    if use_roi_head:
+        print("Using ROI head with the model")
+        roi_heads = ROIHeads3D(
+            num_classes=cfg.roi.num_classes,
+            batch_size_per_image=cfg.roi.batch_size_per_image,
+            positive_fraction=cfg.roi.positive_fraction,
+            proposal_matcher=roi_matcher,
+            roi_pooler=roi_pooler,
+            proposal_append_gt=True,
+            box_head=box_head,
+            box_predictor=box_predictor,
+        )
+
+    else:
+        print("Not using ROI head, setting it to None")
+        roi_heads = None
 
     model = GeneralizedRCNN3D(
         backbone=backbone,
