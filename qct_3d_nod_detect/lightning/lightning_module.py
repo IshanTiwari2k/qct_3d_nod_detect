@@ -79,7 +79,7 @@ class FasterRCNN3DLightning(BaseLightningModule):
         )
 
         self.log_dict(
-            stat_dict,
+            {f"train/{k}": v for k, v in stat_dict.items()},
             prog_bar=True,
             sync_dist=True,
         )
@@ -94,16 +94,17 @@ class FasterRCNN3DLightning(BaseLightningModule):
         if batch_idx%self.train_metrics_batches==0:
 
             with torch.no_grad():
-                detections, _ = self.model.forward_inference(images)
+                proposals = self.model.forward_inference(images)
 
-            for det, tgt in zip(detections, targets):
+            for prop, tgt in zip(proposals, targets):
 
-                if det["scores"].numel() == 0:
+                if len(prop) == 0:
                     pred_boxes = torch.empty((0, 6), device="cpu")
                     pred_scores = torch.empty((0,), device="cpu")
                 else:
-                    pred_boxes = det["pred_boxes"].detach().cpu()
-                    pred_scores = det["scores"].detach().cpu()
+                    scores = torch.sigmoid(prop.objectness_logits).detach().cpu()
+                    pred_boxes = prop.proposal_boxes.tensor.detach().cpu()
+                    pred_scores = scores.detach().cpu()
 
                 gt_boxes = tgt.gt_boxes.tensor.detach().cpu()
 
@@ -133,6 +134,7 @@ class FasterRCNN3DLightning(BaseLightningModule):
 
         self.train_predictions.clear()
 
+    @torch.no_grad()
     def validation_step(
             self, 
             batch, 
@@ -142,24 +144,32 @@ class FasterRCNN3DLightning(BaseLightningModule):
         images, targets = batch
         targets = self._build_targets(images, targets)
 
-        detections, _ = self.model.forward_inference(images)
+        out = self.model.forward_train(images, targets)
+        loss_dict, stat_dict = out['losses'], out['stats']
 
-        num_boxes = sum(len(det["scores"]) for det in detections)
-        self.log(
-            "val/stat/num_boxes",
-            num_boxes,
+        self.log_dict(
+            {f"val/losses/{k}": v for k, v in loss_dict.items()},
+            prog_bar=False,
+            sync_dist=True
+        )
+
+        self.log_dict(
+            {f"val/{k}": v for k, v in stat_dict.items()},
             prog_bar=True,
             sync_dist=True,
         )
 
-        for det, tgt in zip(detections, targets):
+        proposals = self.model.forward_inference(images)
 
-            if det["scores"].numel() == 0:
+        for prop, tgt in zip(proposals, targets):
+
+            if len(prop) == 0:
                 pred_boxes = torch.empty((0, 6), device="cpu")
                 pred_scores = torch.empty((0,), device="cpu")
             else:
-                pred_boxes = det["pred_boxes"].detach().cpu()
-                pred_scores = det["scores"].detach().cpu()
+                scores = torch.sigmoid(prop.objectness_logits).detach().cpu()
+                pred_boxes = prop.proposal_boxes.tensor.detach().cpu()
+                pred_scores = scores.detach().cpu()
 
             gt_boxes = tgt.gt_boxes.tensor.detach().cpu()
 

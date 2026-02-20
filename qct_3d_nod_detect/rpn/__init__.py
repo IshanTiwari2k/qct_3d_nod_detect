@@ -5,7 +5,10 @@ from .anchor_generator_3d import (
     build_anchor_generator_3d,
 )
 
-from .matcher import Matcher
+from .matcher import (
+    Matcher,
+    ATSSMatcher3D
+)
 
 from .proposal_utils import (
     nms_3d,

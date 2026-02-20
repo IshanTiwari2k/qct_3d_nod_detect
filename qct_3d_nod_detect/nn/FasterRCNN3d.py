@@ -25,18 +25,24 @@ class GeneralizedRCNN3D(nn.Module):
             self,
             backbone: nn.Module,
             rpn: nn.Module,
-            roi_heads: nn.Module,
+            roi_heads: nn.Module = None,
     ):
 
         super().__init__()
         self.backbone = backbone
         self.rpn = rpn
-        self.roi_heads = roi_heads
+
+        if roi_heads is None:
+            print("ROI Heads not specified, training RPN only.")
+            self.roi_heads = None
+        else:
+            self.roi_heads = roi_heads
 
     def forward_train(
             self,
             images: torch.Tensor,
             targets: Optional[List[Instances3D]] = None,
+            use_atlas: bool = True
     ) -> Dict[str, torch.Tensor]:
         
         """
@@ -45,7 +51,12 @@ class GeneralizedRCNN3D(nn.Module):
             inference: List[Instances3D]
         """
 
-        features: Dict[str, torch.Tensor] = self.backbone(images)
+        if use_atlas:
+            images_dict = {"chest_ct": images}
+            features: Dict[str, torch.Tensor] = self.backbone(images_dict)
+
+        else:
+            features: Dict[str, torch.Tensor] = self.backbone(images)
 
         image_list = ImagesList3D(
                 tensor=images,
@@ -58,6 +69,12 @@ class GeneralizedRCNN3D(nn.Module):
             gt_instances=targets,
             training=True,
         )
+
+        if self.roi_heads is None:
+            return {
+                "losses": rpn_losses,
+                "stats": rpn_stats,
+            }
 
         roi_losses = self.roi_heads(
             features=features,
@@ -82,7 +99,8 @@ class GeneralizedRCNN3D(nn.Module):
         images: torch.Tensor,
     ) -> List[Instances3D]:
         
-        features = self.backbone(images)
+        images_dict = {"chest_ct": images}
+        features = self.backbone(images_dict)
 
         image_list = ImagesList3D(
                 tensor=images,
@@ -95,6 +113,9 @@ class GeneralizedRCNN3D(nn.Module):
             gt_instances=None,
             training=False,
         )
+
+        if self.roi_heads is None:
+            return proposals
 
         detections = self.roi_heads(
             features=features,

@@ -25,6 +25,7 @@ class BoxMetrics3D:
         self.iou_thresholds = tuple(iou_thresholds)
         self.max_detections = max_detections
 
+
     @staticmethod
     def iou_3d(
         box: np.ndarray,
@@ -142,7 +143,7 @@ class BoxMetrics3D:
         for iou_t in self.iou_thresholds:
             
             all_tp, all_fp = [], []
-            total_gt = 0
+            all_scores, total_gt = [], 0
 
             for s in samples: # Iterate over each image
 
@@ -153,12 +154,23 @@ class BoxMetrics3D:
                     iou_t
                 )
 
+                order = np.argsort(s["pred_scores"])[::-1]
+
+                if self.max_detections is not None:
+                    order = order[: self.max_detections]
+
                 all_tp.append(tp)
                 all_fp.append(fp)
+                all_scores.append(s["pred_scores"][order])
                 total_gt += num_gt
             
             tp = np.concatenate(all_tp) if all_tp else np.array([])
             fp = np.concatenate(all_fp) if all_fp else np.array([])
+            scores = np.concatenate(all_scores)
+
+            global_order = np.argsort(scores)[::-1]
+            tp = tp[global_order]
+            fp = fp[global_order]
 
             ap_per_iou[iou_t] = self.compute_ap(tp, fp, total_gt)
             ar_per_iou[iou_t] = self.compute_ar(tp, total_gt)
@@ -168,4 +180,4 @@ class BoxMetrics3D:
             "mAR": float(np.mean(list(ar_per_iou.values()))),
             "AP": ap_per_iou,
             "AR": ar_per_iou
-        }
+        } 
